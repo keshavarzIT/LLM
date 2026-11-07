@@ -1,0 +1,36 @@
+from transformers import LlamaForCausalLM, LlamaTokenizer
+
+# مسیر مدل روی سیستم
+model_path = r"C:\chatbot\persian_llama_7B_merged"
+
+# بارگذاری توکنایزر و مدل روی CPU
+tokenizer = LlamaTokenizer.from_pretrained(model_path)
+model = LlamaForCausalLM.from_pretrained(
+    model_path,
+    device_map="cpu",       # اجرای مدل روی CPU
+    torch_dtype="auto",     # بهینه‌سازی مصرف حافظه
+    low_cpu_mem_usage=True  # استفاده کمتر از RAM
+)
+
+# آماده‌سازی سوال با قالب instruction-response
+instruction = "اطلاعاتی راجع به رمان سووشون بده"
+prompt = f"### Instruction:\n{instruction}\n### Response:"
+
+inputs = tokenizer(prompt, return_tensors="pt")
+
+# تولید پاسخ کوتاه و دقیق
+outputs = model.generate(
+    **inputs,
+    max_new_tokens=60,       # تعداد توکن پاسخ، کوتاه
+    temperature=0.3,         # کاهش تصادفی بودن خروجی
+    top_p=0.8,               # محدود کردن احتمال تولید
+    repetition_penalty=1.1
+)
+
+# تبدیل توکن‌ها به متن
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# ذخیره پاسخ در فایل
+with open("answer.txt", "w", encoding="utf-8") as f:
+    f.write(response)
+print('the answer has been written')

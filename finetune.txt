@@ -1,0 +1,70 @@
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+from datasets import load_dataset
+from peft import LoraConfig, get_peft_model
+import torch
+
+# مسیر مدل اصلی
+model_path = "C:/chatbot/persian_llama_7B_merged"
+
+# مسیر ذخیره مدل فاین‌تیون شده
+output_dir = "C:/chatbot/persian_llama_7B_finetuned_v2"
+
+# بارگذاری tokenizer و مدل
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    device_map="auto",  # CPU
+    torch_dtype=torch.float32
+)
+
+# بارگذاری دیتاست
+dataset = load_dataset("json", data_files={"train": "sea_dataset.json"})
+
+# تابع tokenize امن با padding و truncation
+def tokenize_function(examples):
+    inputs = tokenizer(examples["prompt"], truncation=True, padding="max_length", max_length=128)
+    labels = tokenizer(examples["completion"], truncation=True, padding="max_length", max_length=128)
+    inputs["labels"] = labels["input_ids"]
+    return inputs
+
+tokenized_datasets = dataset["train"].map(tokenize_function, batched=True)
+
+# تنظیمات LoRA
+lora_config = LoraConfig(
+    r=8,
+    lora_alpha=16,
+    target_modules=["q_proj","v_proj"],  # ماژول‌هایی که LoRA روش اعمال میشه
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+
+model = get_peft_model(model, lora_config)
+
+# تنظیمات آموزش
+training_args = TrainingArguments(
+    output_dir=output_dir,
+    per_device_train_batch_size=1,  # CPU، batch کوچک
+    gradient_accumulation_steps=4,
+    num_train_epochs=3,
+    learning_rate=2e-4,
+    logging_steps=10,
+    save_steps=50,
+    save_total_limit=2,
+    fp16=False,  # CPU، float32
+    dataloader_num_workers=0
+)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_datasets,
+    tokenizer=tokenizer
+)
+
+# آموزش
+trainer.train()
+
+# ذخیره مدل و tokenizer
+model.save_pretrained(output_dir)
+tokenizer.save_pretrained(output_dir)
